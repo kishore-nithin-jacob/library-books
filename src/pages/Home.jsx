@@ -2,9 +2,39 @@ import { Link } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/booksDB';
 import { deleteBook, seedIfEmpty } from '../services/bookService';
+import { useMemo, useState } from 'react';
 
 export default function Home() {
   const books = useLiveQuery(() => db.books.orderBy('createdAt').reverse().toArray(), [], []);
+  const [query, setQuery] = useState('');
+  const [sortKey, setSortKey] = useState('createdAt'); // title | author | year | status | createdAt
+  const [sortDir, setSortDir] = useState('desc');      // asc | desc
+
+  const filtered = useMemo(() => {
+    if (!books) return [];
+    const q = query.trim().toLowerCase();
+    const base = q
+      ? books.filter(b =>
+          (b.title || '').toLowerCase().includes(q) ||
+          (b.author || '').toLowerCase().includes(q) ||
+          (b.isbn || '').toLowerCase().includes(q) ||
+          String(b.year || '').includes(q) ||
+          (b.status || '').toLowerCase().includes(q)
+        )
+      : books;
+
+    const dir = sortDir === 'asc' ? 1 : -1;
+    return [...base].sort((a, b) => {
+      const A = a[sortKey];
+      const B = b[sortKey];
+      // Normalize undefined and case for strings
+      const aV = typeof A === 'string' ? A.toLowerCase() : (A ?? '');
+      const bV = typeof B === 'string' ? B.toLowerCase() : (B ?? '');
+      if (aV < bV) return -1 * dir;
+      if (aV > bV) return  1 * dir;
+      return 0;
+    });
+  }, [books, query, sortKey, sortDir]);
 
   return (
     <div className="container">
@@ -16,9 +46,38 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Controls */}
+      <div className="card" style={{marginBottom:12}}>
+        <div className="row" style={{alignItems:'center'}}>
+          <input
+            className="input"
+            style={{flex:1, minWidth:240}}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search title, author, ISBN, year, status…"
+          />
+          <div className="row" style={{gap:8}}>
+            <select className="select" value={sortKey} onChange={e=>setSortKey(e.target.value)}>
+              <option value="createdAt">Sort: Created</option>
+              <option value="title">Sort: Title</option>
+              <option value="author">Sort: Author</option>
+              <option value="year">Sort: Year</option>
+              <option value="status">Sort: Status</option>
+            </select>
+            <select className="select" value={sortDir} onChange={e=>setSortDir(e.target.value)}>
+              <option value="desc">Desc</option>
+              <option value="asc">Asc</option>
+            </select>
+            {query && (
+              <button className="btn" onClick={()=>setQuery('')}>Clear</button>
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="card">
-        {(!books || books.length === 0) ? (
-          <p>No books yet. Click “Quick Seed” or “Add Book”.</p>
+        {(!filtered || filtered.length === 0) ? (
+          <p>No books {query ? 'match your search.' : 'yet. Click “Quick Seed” or “Add Book”.'}</p>
         ) : (
           <table className="table">
             <thead>
@@ -33,7 +92,7 @@ export default function Home() {
               </tr>
             </thead>
             <tbody>
-              {books.map((b, i) => (
+              {filtered.map((b, i) => (
                 <tr key={b.id}>
                   <td>{i + 1}</td>
                   <td>{b.title}</td>
